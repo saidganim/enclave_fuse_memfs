@@ -28,7 +28,7 @@ static void update_times(struct node *node, int which) {
   if(which & U_MTIME) node->vstat.st_mtime = now;
 }
 
-static int initstat(struct node *node, mode_t mode) {
+static int ecall_initstat(struct node *node, unsigned int mode) {
   struct stat *stbuf = &node->vstat;
   memset(stbuf, 0, sizeof(struct stat));
   stbuf->st_mode  = mode;
@@ -37,7 +37,7 @@ static int initstat(struct node *node, mode_t mode) {
   return 1;
 }
 
-static int createentry(const char *path, mode_t mode, struct node **node) {
+static int ecall_createentry(const char *path, unsigned int mode, struct node **node) {
   char *dirpath = safe_dirname(path);
 
   // Find parent node
@@ -81,7 +81,7 @@ static int createentry(const char *path, mode_t mode, struct node **node) {
 // Filesystem entry points
 //
 
-static int memfs_getattr(const char *path, struct stat *stbuf) {
+static int ecall_memfs_getattr(const char *path, struct stat *stbuf) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
@@ -105,7 +105,7 @@ static int memfs_getattr(const char *path, struct stat *stbuf) {
   return 0;
 }
 
-static int memfs_readlink(const char *path, char *buf, size_t size) {
+static int ecall_memfs_readlink(const char *path, char *buf, size_t size) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
@@ -129,7 +129,7 @@ static int memfs_readlink(const char *path, char *buf, size_t size) {
   return 0;
 }
 
-static int memfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+static int ecall_memfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
   struct node *dir;
   if(!getnodebypath(path, &the_fs, &dir)) {
     return -errno;
@@ -160,7 +160,7 @@ static int memfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
   return 0;
 }
 
-static int memfs_mknod(const char *path, mode_t mode, dev_t rdev) {
+static int ecall_memfs_mknod(const char *path, unsigned int mode, dev_t rdev) {
   struct node *node;
   int res = createentry(path, mode, &node);
   if(res) return res;
@@ -175,7 +175,7 @@ static int memfs_mknod(const char *path, mode_t mode, dev_t rdev) {
   return 0;
 }
 
-static int memfs_mkdir(const char *path, mode_t mode) {
+static int ecall_memfs_mkdir(const char *path, unsigned int mode) {
   struct node *node;
   int res = createentry(path, S_IFDIR | mode, &node);
   if(res) return res;
@@ -186,7 +186,7 @@ static int memfs_mkdir(const char *path, mode_t mode) {
   return 0;
 }
 
-static int memfs_unlink(const char *path) {
+static int ecall_memfs_unlink(const char *path) {
   char *dirpath, *name;
   struct node *dir, *node;
 
@@ -234,7 +234,7 @@ static int memfs_unlink(const char *path) {
   return 0;
 }
 
-static int memfs_rmdir(const char *path) {
+static int ecall_memfs_rmdir(const char *path) {
   char *dirpath, *name;
   struct node *dir, *node;
 
@@ -277,7 +277,7 @@ static int memfs_rmdir(const char *path) {
   return 0;
 }
 
-static int memfs_symlink(const char *from, const char *to) {
+static int ecall_memfs_symlink(const char *from, const char *to) {
   struct node *node;
   int res = createentry(to, S_IFLNK | 0766, &node);
   if(res) return res;
@@ -289,7 +289,7 @@ static int memfs_symlink(const char *from, const char *to) {
 }
 
 // TODO: Adapt to description: https://linux.die.net/man/2/rename
-static int memfs_rename(const char *from, const char *to) {
+static int ecall_memfs_rename(const char *from, const char *to) {
   char *fromdir, *fromnam, *todir, *tonam;
   struct node *node, *fromdirnode, *todirnode;
 
@@ -337,7 +337,7 @@ static int memfs_rename(const char *from, const char *to) {
   return 0;
 }
 
-static int memfs_link(const char *from, const char *to) {
+static int ecall_memfs_link(const char *from, const char *to) {
   char *todir, *tonam;
   struct node *node, *todirnode;
 
@@ -366,13 +366,13 @@ static int memfs_link(const char *from, const char *to) {
   return 0;
 }
 
-static int memfs_chmod(const char *path, mode_t mode) {
+static int ecall_memfs_chmod(const char *path, unsigned int mode) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
   }
 
-  mode_t mask = S_ISUID | S_ISGID | S_ISVTX |
+  unsigned int mask = S_ISUID | S_ISGID | S_ISVTX |
                 S_IRUSR | S_IWUSR | S_IXUSR |
                 S_IRGRP | S_IWGRP | S_IXGRP |
                 S_IROTH | S_IWOTH | S_IXOTH;
@@ -384,7 +384,7 @@ static int memfs_chmod(const char *path, mode_t mode) {
   return 0;
 }
 
-static int memfs_chown(const char *path, uid_t uid, gid_t gid) {
+static int ecall_memfs_chown(const char *path, uid_t uid, gid_t gid) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
@@ -398,7 +398,7 @@ static int memfs_chown(const char *path, uid_t uid, gid_t gid) {
   return 0;
 }
 
-static int memfs_utimens(const char *path, const struct timespec ts[2]) {
+static int ecall_memfs_utimens(const char *path, const struct timespec ts[2]) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
@@ -410,7 +410,7 @@ static int memfs_utimens(const char *path, const struct timespec ts[2]) {
   return 0;
 }
 
-static int memfs_truncate(const char *path, off_t size) {
+static int ecall_memfs_truncate(const char *path, off_t size) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
@@ -454,7 +454,7 @@ static int memfs_truncate(const char *path, off_t size) {
   return 0;
 }
 
-static int memfs_open(const char *path, struct fuse_file_info *fi) {
+static int ecall_memfs_open(const char *path, struct fuse_file_info *fi) {
   struct node *node;
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
@@ -482,7 +482,7 @@ static int memfs_open(const char *path, struct fuse_file_info *fi) {
   return 0;
 }
 
-static int memfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+static int ecall_memfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
   struct filehandle *fh = (struct filehandle *) fi->fh;
 
   // Check whether the file was opened for reading
@@ -511,7 +511,7 @@ static int memfs_read(const char *path, char *buf, size_t size, off_t offset, st
   return n;
 }
 
-static int memfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+static int ecall_memfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
   struct filehandle *fh = (struct filehandle *) fi->fh;
 
   // Check whether the file was opened for writing
@@ -556,7 +556,7 @@ static int memfs_write(const char *path, const char *buf, size_t size, off_t off
   return size;
 }
 
-static int memfs_release(const char *path, struct fuse_file_info *fi) {
+static int ecall_memfs_release(const char *path, struct fuse_file_info *fi) {
   struct filehandle *fh = (struct filehandle *) fi->fh;
 
   // If the file was deleted but we could not free it due to open file descriptors,

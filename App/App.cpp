@@ -89,24 +89,24 @@ struct filesystem the_fs;
 
 
 static struct fuse_operations memfs_oper = {
-  .getattr      = memfs_getattr,
-  .readlink     = memfs_readlink,
-  .readdir      = memfs_readdir,
-  .mknod        = memfs_mknod,
-  .mkdir        = memfs_mkdir,
-  .symlink      = memfs_symlink,
-  .unlink       = memfs_unlink,
-  .rmdir        = memfs_rmdir,
-  .rename       = memfs_rename,
-  .link         = memfs_link,
-  .chmod        = memfs_chmod,
-  .chown        = memfs_chown,
-  .truncate     = memfs_truncate,
-  .utimens      = memfs_utimens,
-  .open         = memfs_open,
-  .read         = memfs_read,
-  .write        = memfs_write,
-  .release      = memfs_release
+  .getattr      = ecall_memfs_getattr,
+  .readlink     = ecall_memfs_readlink,
+  .readdir      = ecall_memfs_readdir,
+  .mknod        = ecall_memfs_mknod,
+  .mkdir        = ecall_memfs_mkdir,
+  .symlink      = ecall_memfs_symlink,
+  .unlink       = ecall_memfs_unlink,
+  .rmdir        = ecall_memfs_rmdir,
+  .rename       = ecall_memfs_rename,
+  .link         = ecall_memfs_link,
+  .chmod        = ecall_memfs_chmod,
+  .chown        = ecall_memfs_chown,
+  .truncate     = ecall_memfs_truncate,
+  .utimens      = ecall_memfs_utimens,
+  .open         = ecall_memfs_open,
+  .read         = ecall_memfs_read,
+  .write        = ecall_memfs_write,
+  .release      = ecall_memfs_release
 };
 
 
