@@ -41,6 +41,10 @@
 #include "sgx_error.h"       /* sgx_status_t */
 #include "sgx_eid.h"     /* sgx_enclave_id_t */
 
+#include <stdint.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <fuse.h>
 #ifndef TRUE
 # define TRUE 1
 #endif
@@ -68,26 +72,25 @@ void ecall_libcxx_functions(void);
 void ecall_thread_functions(void);
 
 
-// fuse fs ecalls
-static int ecall_createentry(const char *path, mode_t mode, struct node **node);
-static int ecall_memfs_getattr(const char *path, struct stat *stbuf);
-static int ecall_memfs_readlink(const char *path, char *buf, size_t size);
-static int ecall_memfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);
-static int ecall_memfs_mknod(const char *path, mode_t mode, dev_t rdev);
-static int ecall_memfs_mkdir(const char *path, mode_t mode);
-static int ecall_memfs_unlink(const char *path);
-static int ecall_memfs_rmdir(const char *path);
-static int ecall_memfs_symlink(const char *from, const char *to);
-static int ecall_memfs_rename(const char *from, const char *to);
-static int ecall_memfs_link(const char *from, const char *to);
-static int ecall_memfs_chmod(const char *path, mode_t mode);
-static int ecall_memfs_chown(const char *path, uid_t uid, gid_t gid);
-static int ecall_memfs_utimens(const char *path, const struct timespec ts[2]);
-static int ecall_memfs_truncate(const char *path, off_t size);
-static int ecall_memfs_open(const char *path, struct fuse_file_info *fi);
-static int ecall_memfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
-static int ecall_memfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
-static int ecall_memfs_release(const char *path, struct fuse_file_info *fi);
+// // fuse fs ecalls
+// static int ecall_memfs_getattr(long long path, long long stbuf);
+// static int ecall_memfs_readlink(long long path, long long buf, size_t size);
+// static int ecall_memfs_readdir(long long path, long long buf, fuse_fill_dir_t filler, off_t offset, long long fi);
+// static int ecall_memfs_mknod(long long path, mode_t mode, dev_t rdev);
+// static int ecall_memfs_mkdir(long long path, mode_t mode);
+// static int ecall_memfs_unlink(long long path);
+// static int ecall_memfs_rmdir(long long path);
+// static int ecall_memfs_symlink(long long from, long long to);
+// static int ecall_memfs_rename(long long from, long long to);
+// static int ecall_memfs_link(long long from, long long to);
+// static int ecall_memfs_chmod(long long path, mode_t mode);
+// static int ecall_memfs_chown(long long path, uid_t uid, gid_t gid);
+// static int ecall_memfs_utimens(long long path, const struct timespec ts[2]);
+// static int ecall_memfs_truncate(long long path, off_t size);
+// static int ecall_memfs_open(long long path, long long fi);
+// static int ecall_memfs_read(long long path, long long buf, size_t size, off_t offset, long long fi);
+// static int ecall_memfs_write(long long path, long long buf, size_t size, off_t offset, long long fi);
+// static int ecall_memfs_release(long long path, long long fi);
 
 
 #if defined(__cplusplus)

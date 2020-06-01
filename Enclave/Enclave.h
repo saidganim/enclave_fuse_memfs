@@ -34,6 +34,8 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <sys/types.h>
 
 #if defined(__cplusplus)
 extern "C" {
