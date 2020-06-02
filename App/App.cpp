@@ -78,6 +78,145 @@ sgx_enclave_id_t global_eid = 0;
 // Utility functions
 //
 
+typedef struct _sgx_errlist_t {
+    sgx_status_t err;
+    const char *msg;
+    const char *sug; /* Suggestion */
+} sgx_errlist_t;
+
+
+
+/* Error code returned by sgx_create_enclave */
+static sgx_errlist_t sgx_errlist[] = {
+    {
+        SGX_ERROR_UNEXPECTED,
+        "Unexpected error occurred.",
+        NULL
+    },
+    {
+        SGX_ERROR_INVALID_PARAMETER,
+        "Invalid parameter.",
+        NULL
+    },
+    {
+        SGX_ERROR_OUT_OF_MEMORY,
+        "Out of memory.",
+        NULL
+    },
+    {
+        SGX_ERROR_ENCLAVE_LOST,
+        "Power transition occurred.",
+        "Please refer to the sample \"PowerTransition\" for details."
+    },
+    {
+        SGX_ERROR_INVALID_ENCLAVE,
+        "Invalid enclave image.",
+        NULL
+    },
+    {
+        SGX_ERROR_INVALID_ENCLAVE_ID,
+        "Invalid enclave identification.",
+        NULL
+    },
+    {
+        SGX_ERROR_INVALID_SIGNATURE,
+        "Invalid enclave signature.",
+        NULL
+    },
+    {
+        SGX_ERROR_OUT_OF_EPC,
+        "Out of EPC memory.",
+        NULL
+    },
+    {
+        SGX_ERROR_NO_DEVICE,
+        "Invalid SGX device.",
+        "Please make sure SGX module is enabled in the BIOS, and install SGX driver afterwards."
+    },
+    {
+        SGX_ERROR_MEMORY_MAP_CONFLICT,
+        "Memory map conflicted.",
+        NULL
+    },
+    {
+        SGX_ERROR_INVALID_METADATA,
+        "Invalid enclave metadata.",
+        NULL
+    },
+    {
+        SGX_ERROR_DEVICE_BUSY,
+        "SGX device was busy.",
+        NULL
+    },
+    {
+        SGX_ERROR_INVALID_VERSION,
+        "Enclave version was invalid.",
+        NULL
+    },
+    {
+        SGX_ERROR_INVALID_ATTRIBUTE,
+        "Enclave was not authorized.",
+        NULL
+    },
+    {
+        SGX_ERROR_ENCLAVE_FILE_ACCESS,
+        "Can't open enclave file.",
+        NULL
+    },
+};
+
+/* Check error conditions for loading enclave */
+void print_error_message(sgx_status_t ret)
+{
+    FILE* fd = fopen("/home/said/fuse_enclave_logs", "a");
+    size_t idx = 0;
+    size_t ttl = sizeof sgx_errlist/sizeof sgx_errlist[0];
+    if(fd <= 0)
+      return;
+    for (idx = 0; idx < ttl; idx++) {
+        if(ret == sgx_errlist[idx].err) {
+            if(NULL != sgx_errlist[idx].sug)
+                fprintf(fd,"Info: %s\n", sgx_errlist[idx].sug);
+            fprintf(fd,"Error: %s\n", sgx_errlist[idx].msg);
+            break;
+        }
+    }
+    
+    if (idx == ttl)
+    	printf("Error code is 0x%X. Please refer to the \"Intel SGX SDK Developer Reference\" for more details.\n", ret);
+}
+
+
+
+
+/* Initialize the enclave:
+ *   Call sgx_create_enclave to initialize an enclave instance
+ */
+int initialize_enclave(void)
+{
+    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+    
+    /* Call sgx_create_enclave to initialize an enclave instance */
+    /* Debug Support: set 2nd parameter to 1 */
+    ret = sgx_create_enclave(ENCLAVE_FILENAME, SGX_DEBUG_FLAG, NULL, NULL, &global_eid, NULL);
+    if (ret != SGX_SUCCESS) {
+        print_error_message(ret);
+        return -1;
+    }
+
+    return 0;
+}
+
+/* OCall functions */
+void ocall_print_string(const char *str)
+{
+    /* Proxy/Bridge will check the length and null-terminate 
+     * the input string to prevent buffer overflow. 
+     */
+    printf("%s", str);
+}
+
+
 
 extern "C"{
 
@@ -503,43 +642,14 @@ static int memfs_truncate(const char *path, off_t size) {
   if(!getnodebypath(path, &the_fs, &node)) {
     return -errno;
   }
-
-  // Calculate new block count
-  blkcnt_t newblkcnt = (size + BLOCKSIZE - 1) / BLOCKSIZE;
-  blkcnt_t oldblkcnt = node->vstat.st_blocks;
-
-  if(oldblkcnt < newblkcnt) {
-    // Allocate additional memory
-    void *newdata = (void*)malloc(newblkcnt * BLOCKSIZE);
-    if(!newdata) {
-      return -ENOMEM;
-    }
-
-    memcpy(newdata, node->data, node->vstat.st_size);
-    free(node->data);
-    node->data = newdata;
-  } else if(oldblkcnt > newblkcnt) {
-    // Allocate new memory so we can free the unnecessarily large memory
-    void *newdata = (void*)malloc(newblkcnt * BLOCKSIZE);
-    if(!newdata) {
-      return -ENOMEM;
-    }
-
-    memcpy(newdata, node->data, size);
-    free(node->data);
-    node->data = newdata;
+  int res;
+  sgx_status_t sgxres = ecall_memfs_truncate(global_eid, &res, (long long)path, size);
+  if(sgxres != SGX_SUCCESS){
+    print_error_message(sgxres);
+    return -EBADF;
   }
-
-  // Fill additional memory with zeroes
-  if(node->vstat.st_size < size) {
-    memset(node->data + node->vstat.st_size, 0, node->vstat.st_size - size);
-  }
-
-  // Update file size
-  node->vstat.st_size = size;
-  node->vstat.st_blocks = newblkcnt;
-
-  return 0;
+  update_times(node, U_CTIME | U_MTIME);
+  return res;
 }
 
 static int memfs_open(const char *path, struct fuse_file_info *fi) {
@@ -564,7 +674,8 @@ static int memfs_open(const char *path, struct fuse_file_info *fi) {
   fh->o_flags = fi->flags;
 
   fi->fh = (uint64_t) fh;
-
+  int res;
+  ecall_memfs_open(global_eid, &res, (long long)path, (long long)fi);
   node->fd_count++;
 
   return 0;
@@ -572,76 +683,37 @@ static int memfs_open(const char *path, struct fuse_file_info *fi) {
 
 static int memfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
   struct filehandle *fh = (struct filehandle *) fi->fh;
-
+  int res = 0;
+  struct node *node = fh->node;
   // Check whether the file was opened for reading
   if(!O_READ(fh->o_flags)) {
     return -EACCES;
   }
-
-  struct node *node = fh->node;
-
-  off_t filesize = node->vstat.st_size;
-
-  // Check whether offset is at or beyond the end of file
-  if(offset >= filesize) {
-    return 0;
+  sgx_status_t sgxres = ecall_memfs_read(global_eid, &res, (long long)path, (long long)buf, size, offset, (long long)fi);
+  if(sgxres != SGX_SUCCESS){
+     print_error_message(sgxres);
+    return -EBADF;
   }
+  if(res > 0) update_times(node, U_ATIME);
 
-  // Calculate number of bytes to copy
-  size_t avail = filesize - offset;
-  size_t n = (size < avail) ? size : avail;
-
-  // Copy file contents
-  memcpy(buf, node->data + offset, n);
-
-  update_times(node, U_ATIME);
-
-  return n;
+  return res;
 }
 
 static int memfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
   struct filehandle *fh = (struct filehandle *) fi->fh;
-
+  int res = 0;
+  struct node *node = fh->node;
   // Check whether the file was opened for writing
   if(!O_WRITE(fh->o_flags)) {
     return -EACCES;
   }
+  
+  int sgxres = ecall_memfs_write(global_eid, &res, (long long)path, (long long)buf, size, offset, (long long)fi);
+  if(sgxres != SGX_SUCCESS)
+    return -EBADF;
+  if(res > 0) update_times(node, U_CTIME | U_MTIME);
 
-  struct node *node = fh->node;
-
-  // Calculate number of required blocks
-  blkcnt_t req_blocks = (offset + size + BLOCKSIZE - 1) / BLOCKSIZE;
-
-  if(node->vstat.st_blocks < req_blocks) {
-    // Allocate more memory
-    void *newdata = (void*)malloc(req_blocks * BLOCKSIZE);
-    if(!newdata) {
-      return -ENOMEM;
-    }
-
-    // Copy old contents
-    if(node->data != NULL) {
-      memcpy(newdata, node->data, node->vstat.st_size);
-      free(node->data);
-    }
-
-    // Update allocation information
-    node->data = newdata;
-    node->vstat.st_blocks = req_blocks;
-  }
-
-  // Write to file buffer
-  memcpy(((char *) node->data) + offset, buf, size);
-
-  // Update file size if necessary
-  off_t minsize = offset + size;
-  if(minsize > node->vstat.st_size) {
-    node->vstat.st_size = minsize;
-  }
-
-  update_times(node, U_CTIME | U_MTIME);
-
-  return size;
+  return res;
 }
 
 static int memfs_release(const char *path, struct fuse_file_info *fi) {
@@ -662,6 +734,27 @@ static int memfs_release(const char *path, struct fuse_file_info *fi) {
   return 0;
 }
 
+static void* init_enclave_fs(struct fuse_conn_info *conn){
+    FILE* fd = fopen("/home/said/fuse_enclave_logs", "a");
+    fprintf(fd, "ENCLAVE MOUNT TRYING\n");
+    fclose(fd);
+    /* Initialize the enclave */
+    if(initialize_enclave() < 0){
+        printf("Enter a character before exit ...\n");
+        getchar();
+        return NULL; 
+    }
+    fd = fopen("/home/said/fuse_enclave_logs", "a");
+    fprintf(fd, "ENCLAVE MOUNT SUCCESS\n");
+    fflush(fd);
+
+    return NULL;
+
+}
+
+void destroy_enclave_fs(void*){
+  sgx_destroy_enclave(global_eid);
+}
 
     static struct fuse_operations memfs_oper = {
     .getattr      = memfs_getattr,
@@ -692,8 +785,8 @@ static int memfs_release(const char *path, struct fuse_file_info *fi) {
     .readdir      = memfs_readdir,
     .releasedir   = NULL,
     .fsyncdir     = NULL,
-    .init         = NULL,
-    .destroy      = NULL,
+    .init         = init_enclave_fs,
+    .destroy      = destroy_enclave_fs,
     .access       = NULL,
     .utimens      = memfs_utimens,
     };
@@ -709,151 +802,11 @@ static int memfs_release(const char *path, struct fuse_file_info *fi) {
 
 
 
-typedef struct _sgx_errlist_t {
-    sgx_status_t err;
-    const char *msg;
-    const char *sug; /* Suggestion */
-} sgx_errlist_t;
-
-/* Error code returned by sgx_create_enclave */
-static sgx_errlist_t sgx_errlist[] = {
-    {
-        SGX_ERROR_UNEXPECTED,
-        "Unexpected error occurred.",
-        NULL
-    },
-    {
-        SGX_ERROR_INVALID_PARAMETER,
-        "Invalid parameter.",
-        NULL
-    },
-    {
-        SGX_ERROR_OUT_OF_MEMORY,
-        "Out of memory.",
-        NULL
-    },
-    {
-        SGX_ERROR_ENCLAVE_LOST,
-        "Power transition occurred.",
-        "Please refer to the sample \"PowerTransition\" for details."
-    },
-    {
-        SGX_ERROR_INVALID_ENCLAVE,
-        "Invalid enclave image.",
-        NULL
-    },
-    {
-        SGX_ERROR_INVALID_ENCLAVE_ID,
-        "Invalid enclave identification.",
-        NULL
-    },
-    {
-        SGX_ERROR_INVALID_SIGNATURE,
-        "Invalid enclave signature.",
-        NULL
-    },
-    {
-        SGX_ERROR_OUT_OF_EPC,
-        "Out of EPC memory.",
-        NULL
-    },
-    {
-        SGX_ERROR_NO_DEVICE,
-        "Invalid SGX device.",
-        "Please make sure SGX module is enabled in the BIOS, and install SGX driver afterwards."
-    },
-    {
-        SGX_ERROR_MEMORY_MAP_CONFLICT,
-        "Memory map conflicted.",
-        NULL
-    },
-    {
-        SGX_ERROR_INVALID_METADATA,
-        "Invalid enclave metadata.",
-        NULL
-    },
-    {
-        SGX_ERROR_DEVICE_BUSY,
-        "SGX device was busy.",
-        NULL
-    },
-    {
-        SGX_ERROR_INVALID_VERSION,
-        "Enclave version was invalid.",
-        NULL
-    },
-    {
-        SGX_ERROR_INVALID_ATTRIBUTE,
-        "Enclave was not authorized.",
-        NULL
-    },
-    {
-        SGX_ERROR_ENCLAVE_FILE_ACCESS,
-        "Can't open enclave file.",
-        NULL
-    },
-};
-
-/* Check error conditions for loading enclave */
-void print_error_message(sgx_status_t ret)
-{
-    size_t idx = 0;
-    size_t ttl = sizeof sgx_errlist/sizeof sgx_errlist[0];
-
-    for (idx = 0; idx < ttl; idx++) {
-        if(ret == sgx_errlist[idx].err) {
-            if(NULL != sgx_errlist[idx].sug)
-                printf("Info: %s\n", sgx_errlist[idx].sug);
-            printf("Error: %s\n", sgx_errlist[idx].msg);
-            break;
-        }
-    }
-    
-    if (idx == ttl)
-    	printf("Error code is 0x%X. Please refer to the \"Intel SGX SDK Developer Reference\" for more details.\n", ret);
-}
-
-/* Initialize the enclave:
- *   Call sgx_create_enclave to initialize an enclave instance
- */
-int initialize_enclave(void)
-{
-    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
-    
-    /* Call sgx_create_enclave to initialize an enclave instance */
-    /* Debug Support: set 2nd parameter to 1 */
-    ret = sgx_create_enclave(ENCLAVE_FILENAME, SGX_DEBUG_FLAG, NULL, NULL, &global_eid, NULL);
-    if (ret != SGX_SUCCESS) {
-        print_error_message(ret);
-        return -1;
-    }
-
-    return 0;
-}
-
-/* OCall functions */
-void ocall_print_string(const char *str)
-{
-    /* Proxy/Bridge will check the length and null-terminate 
-     * the input string to prevent buffer overflow. 
-     */
-    printf("%s", str);
-}
-
-
 /* Application entry */
 int SGX_CDECL main(int argc, char *argv[])
 {
     (void)(argc);
     (void)(argv);
-
-
-    /* Initialize the enclave */
-    if(initialize_enclave() < 0){
-        printf("Enter a character before exit ...\n");
-        getchar();
-        return -1; 
-    }
  
     struct node *root = (struct node*) malloc(sizeof(struct node));
 
@@ -869,9 +822,6 @@ int SGX_CDECL main(int argc, char *argv[])
     the_fs.root = root;
 
     umask(0);
-
-    printf("Info: SGX memfs is initialized successfully.\n");
-
     return fuse_main(argc, argv, &memfs_oper, NULL);
 }
 
