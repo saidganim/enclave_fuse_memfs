@@ -53,26 +53,25 @@ class BlobFile{
         struct chunks* currchnk = &chnks;
         size_t curroffset = 0;
         size_t len = length;
-        // if(offset >= size)
-        //   return 0;
-        // if(len+offset >= size)
-        //   length = len = size - offset;
-        // while((curroffset+blobSize <= offset) && currchnk){
-        //   curroffset += blobSize;
-        //   assert(currchnk->next != nullptr);
-        //   currchnk = currchnk->next;
-        // }
-        // curroffset += offset % blobSize;
+        if(offset >= size)
+          return 0;
+        if(len+offset >= size)
+          length = len = size - offset;
+        while((curroffset+blobSize <= offset) && currchnk){
+          curroffset += blobSize;
+          assert(currchnk->next != nullptr);
+          currchnk = currchnk->next;
+        }
+        curroffset += offset % blobSize;
 
-        // while((len > 0) && currchnk){
-        //   size_t shift = std::min(len, blobSize - (curroffset % blobSize));
-        //   memcpy(buf, &currchnk->blob[shift], shift);
-        //   currchnk = currchnk->next;
-        //   curroffset += shift;
-        //   buf += shift;
-        //   len -= shift;
-        // }
-        memcpy(buf, "SOME SYMS", 10);
+        while((len > 0) && currchnk){
+          size_t shift = std::min(len, blobSize - (curroffset % blobSize));
+          memcpy(buf, &currchnk->blob[curroffset % blobSize], shift);
+          currchnk = currchnk->next;
+          curroffset += shift;
+          buf += shift;
+          len -= shift;
+        }
         return length;
     }
 

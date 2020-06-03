@@ -686,6 +686,7 @@ static int memfs_read(const char *path, char *buf, size_t size, off_t offset, st
   int res = 0;
   struct node *node = fh->node;
   // Check whether the file was opened for reading
+  
   if(!O_READ(fh->o_flags)) {
     return -EACCES;
   }
@@ -694,8 +695,8 @@ static int memfs_read(const char *path, char *buf, size_t size, off_t offset, st
      print_error_message(sgxres);
     return -EBADF;
   }
-  if(res > 0) update_times(node, U_ATIME);
-
+  if(res > 0) 
+    update_times(node, U_ATIME);
   return res;
 }
 
@@ -712,7 +713,11 @@ static int memfs_write(const char *path, const char *buf, size_t size, off_t off
   if(sgxres != SGX_SUCCESS)
     return -EBADF;
   if(res > 0) update_times(node, U_CTIME | U_MTIME);
-
+  // Update file size if necessary
+  off_t minsize = offset + size;
+  if(minsize > node->vstat.st_size) {
+    node->vstat.st_size = minsize;
+  }
   return res;
 }
 
